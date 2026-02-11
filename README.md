@@ -68,7 +68,11 @@ All architectural decisions are documented as ADRs in [docs/adr/](docs/adr/):
 
 **Provider abstraction for LLMs:** In this system, I didn't hardcode any specific provider. The abstract base class means that swapping to Claude or Ollama is a config change. This totally avoids vendor lock-in and lets the user try out different providers.
 
-**Intent classification:** Not all queries should take the same path through the system. Speaker queries filter by metadata, structured queries hit SQLite, semantic queries do full vector search. It's efficient and gives better results than running everything through the same retrieval pipeline.  
+**Intent classification:** Not all queries should take the same path through the system. Speaker queries filter by metadata, structured queries hit SQLite, semantic queries do full vector search. It's efficient and gives better results than running everything through the same retrieval pipeline.
+
+**Speaker existence fast-path:** For speaker queries, the system checks the known speakers list in SQLite before any vector search. If the speaker doesn't exist, it returns an immediate definitive answer listing the actual speakers - no vector search or LLM call needed.
+
+**Confidence scoring:** Every answer includes a confidence level (High / Medium / Low) displayed as a colour-coded badge in the UI. Structured queries from SQLite are always HIGH. For vector search results, confidence is based on the top similarity score (>= 0.7 HIGH, >= 0.4 MEDIUM, < 0.4 LOW).
 
 ## Engineering Standards
 **What was followed:** Type hints everywhere, Pydantic models for all data crossing module boundaries, dependency injection (components receive dependencies rather than creating them), structured logging with structlog (JSON format, every significant operation logged with context), separation of concerns (parser doesn't know about embeddings, embedder doesn't know about Qdrant), configuration via environment variables with Pydantic BaseSettings.
@@ -80,7 +84,7 @@ All architectural decisions are documented as ADRs in [docs/adr/](docs/adr/):
 ## How I Used AI Tools in Development
 **Our workflow:** Used Claude, and ChatGPT for architecture discussion, and technology comparison. Used Claude Code CLI for implementation with a CLAUDE.md context file that defined the project structure, coding standards, and architectural constraints.
 
-I'd generally go for setting up a proposal for the whole project with [openspec](https://openspec.dev/) and combine it with Ralph loop to go on about execution but but the scope here didn't warrant it.
+I'd generally go for setting up a proposal for the whole project with [openspec](https://openspec.dev/) and combine it with Ralph loop to go on about execution but the scope here didn't warrant it.
 
 **The division of labour:** I made all architectural decisions - tech stack selection, chunking strategy, dual storage design, provider abstraction pattern. I designed the data models and pipeline flow. Claude Code implemented modules under my direction, following the standards in CLAUDE.md. I reviewed all generated code, tested it, and iterated on issues I found.
 
@@ -106,7 +110,8 @@ The dual storage design is good. However, on the happy path, structured queries 
 
 **Production optimisation:** For simple list/lookup queries (action items, decisions, speakers, summaries), the system should bypass the LLM entirely and return formatted SQLite results directly. Intent classification could use a lightweight local model or deterministic keyword matching, and the structured data could be returned as-is without LLM reformatting. This would bring structured query latency down to <100ms.
 
-**Current limitation:** If the heuristic intent classifier (used when the LLM is rate-limited) fails to detect a speaker query (e.g. "was sarah johnson here though?"), the query may fall through to semantic search instead of the speaker fast-path. This is a known degradation under rate-limiting.
+### Heuristic Classifier Degradation
+When the LLM is rate-limited, intent classification falls back to keyword heuristics. This fallback can miss speaker queries phrased indirectly (e.g. "was sarah johnson here though?"), causing them to fall through to semantic search instead of the speaker existence fast-path described above. This means the definitive "speaker not found" answer may not trigger for unusual phrasings under rate-limiting.
 
 ### Embedding Similarity Scores
 Vector search scores may appear low (< 0.5) for some queries. This is expected behaviour with `all-MiniLM-L6-v2` embeddings and cosine similarity - it just so happens that conversational transcript text often has weak semantic overlap with formal question phrasing. The system now falls back to returning top-3 results with a low-confidence flag when no chunks pass the similarity threshold, rather than returning empty results.
