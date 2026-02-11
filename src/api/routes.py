@@ -153,6 +153,7 @@ async def ingest_audio(request: Request, file: UploadFile) -> AudioIngestionResu
         topics=result.topics,
         action_items_count=result.action_items_count,
         transcript_filename=transcript_filename,
+        transcript_text=transcript_text,
     )
 
 

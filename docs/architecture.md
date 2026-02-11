@@ -161,9 +161,9 @@ User Question
 ```
 ┌─────────────────────────────────┐     ┌─────────────────────┐
 │          app container          │     │   qdrant container   │
-│                                 │     │                      │
-│  FastAPI  (:8000)               │────▶│  Qdrant  (:6333)     │
-│  Streamlit (:8501)              │     │                      │
+│                                 │     │   (internal only)    │
+│  FastAPI  (127.0.0.1:8000)     │────▶│  Qdrant  (:6333)     │
+│  Streamlit (127.0.0.1:8501)    │     │                      │
 │  Embedder (in-process)          │     │  Vector storage      │
 │  SQLite (file-based)            │     │  (Rust engine)       │
 │                                 │     │                      │

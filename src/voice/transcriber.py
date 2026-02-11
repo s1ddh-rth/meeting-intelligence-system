@@ -110,7 +110,24 @@ class AudioTranscriber:
         )
 
         # Step 2: Speaker diarization with pyannote
-        diarization = self._diarization_pipeline(audio_path)
+        # Load audio via torchaudio and resample to 16kHz — pyannote expects
+        # this sample rate and fails on raw MP3s with non-standard rates.
+        import torch
+        import torchaudio
+
+        waveform, sample_rate = torchaudio.load(audio_path)
+        if sample_rate != 16000:
+            waveform = torchaudio.functional.resample(waveform, sample_rate, 16000)
+        # Pyannote expects mono; mix down if stereo
+        if waveform.shape[0] > 1:
+            waveform = waveform.mean(dim=0, keepdim=True)
+
+        pipeline_output = self._diarization_pipeline(
+            {"waveform": waveform, "sample_rate": 16000}
+        )
+
+        # pyannote 4.x returns DiarizeOutput; extract the Annotation object
+        diarization = getattr(pipeline_output, "speaker_diarization", pipeline_output)
 
         # Build speaker rename map: SPEAKER_00 → Speaker 1, SPEAKER_01 → Speaker 2
         raw_labels = sorted({label for _, _, label in diarization.itertracks(yield_label=True)})

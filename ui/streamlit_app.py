@@ -286,6 +286,14 @@ def _ingest_audio(uploaded_file: st.runtime.uploaded_file_manager.UploadedFile) 
                 f"{result['action_items_count']} action items\n\n"
                 f"Transcript saved as `{result['transcript_filename']}`"
             )
+            transcript_text = result.get("transcript_text", "")
+            if transcript_text:
+                st.download_button(
+                    label="Download Transcript",
+                    data=transcript_text,
+                    file_name=result["transcript_filename"],
+                    mime="text/plain",
+                )
         else:
             progress.empty()
             detail = response.json().get("detail", response.text) if response.headers.get("content-type", "").startswith("application/json") else response.text

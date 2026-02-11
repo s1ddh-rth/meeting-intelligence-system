@@ -142,6 +142,7 @@ class AudioIngestionResult(IngestionResult):
     """Result returned after ingesting an audio file (transcription + ingestion)."""
 
     transcript_filename: str
+    transcript_text: str = ""
 
 
 # --- LLM ---
