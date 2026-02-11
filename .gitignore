@@ -18,6 +18,9 @@ ENV/
 # SQLite
 data/sqlite/*.db
 
+# Generated audio transcripts
+data/transcripts/
+
 # IDE
 .idea/
 .vscode/

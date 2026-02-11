@@ -3,8 +3,7 @@
 ## Project Summary
 Meeting Intelligence System — a conversational AI assistant that analyses meeting transcripts
 (text files with speaker labels and timestamps) and answers questions about discussions,
-decisions, and action items. Built as a take-home assignment for an AI Engineer role at
-Newpage Solutions (Bristol, UK).
+decisions, and action items. 
 
 ## Tech Stack
 | Component | Technology |
@@ -18,6 +17,7 @@ Newpage Solutions (Bristol, UK).
 | Frontend | Streamlit (demo UI) |
 | Orchestration | Custom Python chain pattern (no LangChain) |
 | Containers | Docker + docker-compose (app + qdrant) |
+| Voice/STT | faster-whisper (base, INT8 CPU) + pyannote speaker diarization |
 | Logging | structlog (structured JSON) |
 | Testing | pytest |
 
@@ -40,6 +40,9 @@ Newpage Solutions (Bristol, UK).
 3. **Speaker-aware chunking** — Split on speaker change, merge short turns, split long monologues.
 4. **Provider abstraction** — Abstract LLMProvider base class; swap Gemini/Claude/Ollama via config.
 5. **Intent classification** — Route queries to appropriate retrieval strategy (structured, speaker, semantic, cross-meeting).
+6. **Speaker existence fast-path** — Check SQLite known speakers before vector search; return definitive answer if speaker not found.
+7. **Confidence scoring** — Compute HIGH/MEDIUM/LOW from retrieval scores; display as colour-coded badges in UI.
+8. **Lazy model loading** — Whisper + pyannote load on first audio upload, not at startup.
 
 ## Project Structure
 ```
@@ -48,6 +51,8 @@ meeting-intelligence/
 ├── docker-compose.yml
 ├── Dockerfile
 ├── requirements.txt
+├── requirements-voice.txt
+├── start.sh
 ├── .env.example
 ├── .gitignore
 ├── README.md
