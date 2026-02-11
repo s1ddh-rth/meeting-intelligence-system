@@ -1,13 +1,18 @@
-"""Audio transcription using Whisper + Pyannote for speaker diarization.
+"""Audio transcription using faster-whisper + pyannote for speaker diarization.
 
 BONUS MODULE — Optional. Requires additional dependencies:
-    pip install openai-whisper pyannote.audio torchaudio
+    pip install -r requirements-voice.txt
 
-This module converts audio files (.wav, .mp3) into timestamped, speaker-labeled
-transcripts compatible with the existing parser pipeline (Format A).
+This module converts audio files (.wav, .mp3, .m4a) into timestamped,
+speaker-labeled transcripts compatible with the existing parser pipeline (Format A).
+
+Uses faster-whisper (CTranslate2-based, INT8, CPU) instead of openai-whisper
+for ~4x faster inference and lower memory usage.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 import structlog
 
@@ -15,76 +20,117 @@ logger = structlog.get_logger()
 
 
 class AudioTranscriber:
-    """Converts audio to speaker-labelled transcript using Whisper + Pyannote.
+    """Converts audio to speaker-labelled transcript using faster-whisper + pyannote.
 
-    Combines OpenAI Whisper (speech-to-text) with Pyannote (speaker diarization)
-    by aligning Whisper segments with Pyannote speaker labels via temporal overlap.
+    Combines faster-whisper (speech-to-text) with pyannote (speaker diarization)
+    by aligning whisper segments with pyannote speaker labels via temporal overlap.
 
     The output is a formatted transcript string matching Format A (timestamped),
     which feeds directly into the existing TranscriptParser.
+
+    Models are lazy-loaded on first call to transcribe() so text-only users
+    pay no startup cost.
     """
 
-    def __init__(self, whisper_model: str = "base") -> None:
+    def __init__(self, whisper_model: str = "base", hf_token: str = "") -> None:
         self._whisper_model_name = whisper_model
-        self._whisper_model = None
-        self._diarization_pipeline = None
+        self._hf_token = hf_token
+        self._whisper_model: Any = None
+        self._diarization_pipeline: Any = None
 
     def _load_models(self) -> None:
-        """Lazy-load Whisper and Pyannote models."""
+        """Lazy-load faster-whisper and pyannote models on first use."""
         if self._whisper_model is None:
             try:
-                import whisper
+                from faster_whisper import WhisperModel
 
-                logger.info("loading_whisper_model", model=self._whisper_model_name)
-                self._whisper_model = whisper.load_model(self._whisper_model_name)
+                logger.info(
+                    "loading_whisper_model",
+                    model=self._whisper_model_name,
+                    compute_type="int8",
+                )
+                self._whisper_model = WhisperModel(
+                    self._whisper_model_name,
+                    device="cpu",
+                    compute_type="int8",
+                )
             except ImportError:
                 raise ImportError(
-                    "openai-whisper is required for audio transcription. "
-                    "Install with: pip install openai-whisper"
+                    "faster-whisper is required for audio transcription. "
+                    "Install with: pip install -r requirements-voice.txt"
                 )
 
         if self._diarization_pipeline is None:
+            if not self._hf_token:
+                raise ValueError(
+                    "HF_TOKEN is required for pyannote speaker diarization. "
+                    "Get a free token at https://huggingface.co/settings/tokens "
+                    "and accept the model terms at "
+                    "https://huggingface.co/pyannote/speaker-diarization-3.1"
+                )
+
             try:
                 from pyannote.audio import Pipeline
 
                 logger.info("loading_pyannote_pipeline")
                 self._diarization_pipeline = Pipeline.from_pretrained(
-                    "pyannote/speaker-diarization-3.1"
+                    "pyannote/speaker-diarization-3.1",
+                    use_auth_token=self._hf_token,
                 )
             except ImportError:
                 raise ImportError(
                     "pyannote.audio is required for speaker diarization. "
-                    "Install with: pip install pyannote.audio"
+                    "Install with: pip install -r requirements-voice.txt"
                 )
 
     def transcribe(self, audio_path: str) -> str:
         """Transcribe an audio file to a speaker-labelled transcript.
 
         Args:
-            audio_path: Path to .wav or .mp3 file.
+            audio_path: Path to .wav, .mp3, or .m4a file.
 
         Returns:
-            Formatted transcript string (Format A: [HH:MM:SS] Speaker: text).
+            Formatted transcript string (Format A: [HH:MM:SS] Speaker N: text).
         """
         self._load_models()
 
         logger.info("transcription_started", audio_path=audio_path)
 
-        # Step 1: Speech-to-text with Whisper
-        whisper_result = self._whisper_model.transcribe(audio_path)
-        segments = whisper_result.get("segments", [])
+        # Step 1: Speech-to-text with faster-whisper
+        segments_iter, info = self._whisper_model.transcribe(
+            audio_path,
+            beam_size=5,
+        )
+        segments = list(segments_iter)
+        logger.info(
+            "whisper_complete",
+            language=info.language,
+            language_probability=round(info.language_probability, 2),
+            num_segments=len(segments),
+        )
 
-        # Step 2: Speaker diarization with Pyannote
+        # Step 2: Speaker diarization with pyannote
         diarization = self._diarization_pipeline(audio_path)
 
-        # Step 3: Align Whisper segments with Pyannote speakers
+        # Build speaker rename map: SPEAKER_00 → Speaker 1, SPEAKER_01 → Speaker 2
+        raw_labels = sorted({label for _, _, label in diarization.itertracks(yield_label=True)})
+        speaker_map = {
+            raw: f"Speaker {i + 1}"
+            for i, raw in enumerate(raw_labels)
+        }
+        logger.info("diarization_complete", speakers=list(speaker_map.values()))
+
+        # Step 3: Align whisper segments with pyannote speakers
         lines: list[str] = []
         for segment in segments:
-            start = segment["start"]
-            end = segment["end"]
-            text = segment["text"].strip()
+            start = segment.start
+            end = segment.end
+            text = segment.text.strip()
+            if not text:
+                continue
 
-            speaker = self._find_speaker(diarization, start, end)
+            raw_speaker = self._find_speaker(diarization, start, end)
+            speaker = speaker_map.get(raw_speaker, "Unknown")
             timestamp = self._format_timestamp(start)
             lines.append(f"[{timestamp}] {speaker}: {text}")
 
@@ -92,13 +138,14 @@ class AudioTranscriber:
         logger.info(
             "transcription_complete",
             audio_path=audio_path,
-            segments=len(segments),
-            lines=len(lines),
+            num_segments=len(segments),
+            num_lines=len(lines),
+            num_speakers=len(speaker_map),
         )
         return transcript
 
     @staticmethod
-    def _find_speaker(diarization, start: float, end: float) -> str:
+    def _find_speaker(diarization: Any, start: float, end: float) -> str:
         """Find the speaker for a time segment using maximum temporal overlap."""
         best_speaker = "Unknown"
         best_overlap = 0.0

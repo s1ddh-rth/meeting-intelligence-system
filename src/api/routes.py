@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
+from pathlib import Path
+
 import structlog
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from pydantic import BaseModel
@@ -9,11 +13,14 @@ from pydantic import BaseModel
 from src.llm.provider import RateLimitError
 from src.models.schemas import (
     ActionItem,
+    AudioIngestionResult,
     Decision,
     IngestionResult,
     MeetingInfo,
     QueryResponse,
 )
+
+AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm"}
 
 logger = structlog.get_logger()
 
@@ -66,6 +73,87 @@ async def ingest_transcript(request: Request, file: UploadFile) -> IngestionResu
     except Exception:
         logger.exception("ingest_failed", filename=file.filename)
         raise HTTPException(status_code=500, detail="Ingestion failed — check logs for details")
+
+
+@router.post("/ingest/audio", response_model=AudioIngestionResult)
+async def ingest_audio(request: Request, file: UploadFile) -> AudioIngestionResult:
+    """Upload an audio file, transcribe it with speaker labels, and ingest.
+
+    Accepts .mp3, .wav, .m4a, .ogg, .flac, .webm files. The audio is
+    transcribed using faster-whisper + pyannote speaker diarization, saved
+    as a .txt transcript in data/transcripts/, then fed into the standard
+    ingestion pipeline.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in AUDIO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported audio format '{ext}'. Accepted: {', '.join(sorted(AUDIO_EXTENSIONS))}",
+        )
+
+    transcriber = getattr(request.app.state, "transcriber", None)
+    if transcriber is None:
+        raise HTTPException(
+            status_code=501,
+            detail="Audio transcription is not available. Install voice dependencies: pip install -r requirements-voice.txt",
+        )
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Audio file is empty")
+
+    logger.info("audio_ingest_request", filename=file.filename, size_bytes=len(content))
+
+    # Write audio to temp file for processing
+    tmp_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        # Transcribe audio → text
+        transcript_text = transcriber.transcribe(tmp_path)
+    except (ImportError, ValueError) as e:
+        raise HTTPException(status_code=501, detail=str(e))
+    except Exception:
+        logger.exception("audio_transcription_failed", filename=file.filename)
+        raise HTTPException(status_code=500, detail="Audio transcription failed — check logs for details")
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    if not transcript_text.strip():
+        raise HTTPException(status_code=422, detail="Transcription produced no text — audio may be silent or corrupted")
+
+    # Save transcript to data/transcripts/
+    settings = request.app.state.settings
+    transcripts_dir = Path(settings.transcripts_dir)
+    transcripts_dir.mkdir(parents=True, exist_ok=True)
+
+    transcript_filename = Path(file.filename).stem + ".txt"
+    transcript_path = transcripts_dir / transcript_filename
+    transcript_path.write_text(transcript_text, encoding="utf-8")
+    logger.info("transcript_saved", path=str(transcript_path))
+
+    # Feed into existing ingestion pipeline
+    try:
+        chain = request.app.state.ingestion_chain
+        result = await chain.run(file_content=transcript_text, filename=transcript_filename)
+    except Exception:
+        logger.exception("ingestion_after_transcription_failed", filename=transcript_filename)
+        raise HTTPException(status_code=500, detail="Ingestion failed after transcription — check logs for details")
+
+    return AudioIngestionResult(
+        meeting_id=result.meeting_id,
+        chunks_created=result.chunks_created,
+        speakers=result.speakers,
+        topics=result.topics,
+        action_items_count=result.action_items_count,
+        transcript_filename=transcript_filename,
+    )
 
 
 @router.post("/query", response_model=QueryResponse)

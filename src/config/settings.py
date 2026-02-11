@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     max_chunk_tokens: int = 300
     min_chunk_tokens: int = 30
 
+    # Voice transcription (optional)
+    hf_token: str = ""
+    whisper_model: str = "base"
+    transcripts_dir: str = "data/transcripts"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

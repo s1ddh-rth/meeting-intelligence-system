@@ -20,6 +20,7 @@ from src.llm.factory import get_llm_provider
 from src.retrieval.retriever import Retriever
 from src.storage.structured_store import StructuredStore
 from src.storage.vector_store import VectorStore
+from src.voice.transcriber import AudioTranscriber
 
 logger = structlog.get_logger()
 
@@ -84,12 +85,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     query_chain = QueryChain(retriever=retriever, llm=llm)
 
+    # Voice transcriber (lazy-loaded — models download on first audio upload)
+    transcriber = AudioTranscriber(
+        whisper_model=settings.whisper_model,
+        hf_token=settings.hf_token,
+    )
+
     # Attach to app state for dependency injection in routes
     app.state.settings = settings
     app.state.ingestion_chain = ingestion_chain
     app.state.query_chain = query_chain
     app.state.structured_store = structured_store
     app.state.vector_store = vector_store
+    app.state.transcriber = transcriber
 
     logger.info(
         "app_started",

@@ -7,6 +7,21 @@ import streamlit as st
 
 API_BASE = "http://localhost:8000/api"
 
+AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "ogg", "flac", "webm"]
+AUDIO_MIME_MAP = {
+    "mp3": "audio/mpeg",
+    "wav": "audio/wav",
+    "m4a": "audio/mp4",
+    "ogg": "audio/ogg",
+    "flac": "audio/flac",
+    "webm": "audio/webm",
+}
+
+
+def _is_audio_file(filename: str) -> bool:
+    """Check if a filename has an audio extension."""
+    return any(filename.lower().endswith(f".{ext}") for ext in AUDIO_EXTENSIONS)
+
 
 def main() -> None:
     """Main Streamlit application."""
@@ -19,30 +34,21 @@ def main() -> None:
 
     # --- Sidebar: Upload & Meeting Selection ---
     with st.sidebar:
-        st.header("Transcript Upload")
-        uploaded_file = st.file_uploader("Upload a meeting transcript", type=["txt"])
+        st.header("Upload")
+        uploaded_file = st.file_uploader(
+            "Upload a transcript or audio file",
+            type=["txt"] + AUDIO_EXTENSIONS,
+        )
 
-        if uploaded_file is not None and st.button("Ingest Transcript"):
-            with st.spinner("Processing transcript..."):
-                try:
-                    response = httpx.post(
-                        f"{API_BASE}/ingest",
-                        files={"file": (uploaded_file.name, uploaded_file.getvalue(), "text/plain")},
-                        timeout=120.0,
-                    )
-                    if response.status_code == 200:
-                        result = response.json()
-                        st.success(
-                            f"Ingested **{result['meeting_id']}**: "
-                            f"{result['chunks_created']} chunks, "
-                            f"{result['action_items_count']} action items"
-                        )
-                    else:
-                        st.error(f"Ingestion failed: {response.text}")
-                except httpx.ConnectError:
-                    st.error("Cannot connect to API server. Is it running?")
-                except httpx.HTTPError as e:
-                    st.error(f"Ingestion request failed: {e}")
+        if uploaded_file is not None:
+            is_audio = _is_audio_file(uploaded_file.name)
+            file_type_label = "audio" if is_audio else "transcript"
+
+            if st.button(f"Ingest {file_type_label.title()}"):
+                if is_audio:
+                    _ingest_audio(uploaded_file)
+                else:
+                    _ingest_transcript(uploaded_file)
 
         st.divider()
         st.header("Meetings")
@@ -160,6 +166,69 @@ def main() -> None:
                     st.error("Query timed out. The server may be loading models — try again in a moment.")
                 except httpx.HTTPError as e:
                     st.error(f"Request failed: {e}")
+
+
+def _ingest_transcript(uploaded_file: st.runtime.uploaded_file_manager.UploadedFile) -> None:
+    """Ingest a text transcript file via the /ingest endpoint."""
+    with st.spinner("Processing transcript..."):
+        try:
+            response = httpx.post(
+                f"{API_BASE}/ingest",
+                files={"file": (uploaded_file.name, uploaded_file.getvalue(), "text/plain")},
+                timeout=120.0,
+            )
+            if response.status_code == 200:
+                result = response.json()
+                st.success(
+                    f"Ingested **{result['meeting_id']}**: "
+                    f"{result['chunks_created']} chunks, "
+                    f"{result['action_items_count']} action items"
+                )
+            else:
+                st.error(f"Ingestion failed: {response.text}")
+        except httpx.ConnectError:
+            st.error("Cannot connect to API server. Is it running?")
+        except httpx.HTTPError as e:
+            st.error(f"Ingestion request failed: {e}")
+
+
+def _ingest_audio(uploaded_file: st.runtime.uploaded_file_manager.UploadedFile) -> None:
+    """Ingest an audio file via the /ingest/audio endpoint."""
+    ext = uploaded_file.name.rsplit(".", 1)[-1].lower()
+    mime = AUDIO_MIME_MAP.get(ext, "application/octet-stream")
+
+    progress = st.progress(0, text="Uploading audio...")
+    try:
+        progress.progress(10, text="Transcribing audio (this may take several minutes on CPU)...")
+        response = httpx.post(
+            f"{API_BASE}/ingest/audio",
+            files={"file": (uploaded_file.name, uploaded_file.getvalue(), mime)},
+            timeout=600.0,
+        )
+        progress.progress(90, text="Finalising...")
+
+        if response.status_code == 200:
+            result = response.json()
+            progress.progress(100, text="Done!")
+            st.success(
+                f"Transcribed & ingested **{result['meeting_id']}**: "
+                f"{result['chunks_created']} chunks, "
+                f"{result['action_items_count']} action items\n\n"
+                f"Transcript saved as `{result['transcript_filename']}`"
+            )
+        else:
+            progress.empty()
+            detail = response.json().get("detail", response.text) if response.headers.get("content-type", "").startswith("application/json") else response.text
+            st.error(f"Audio ingestion failed: {detail}")
+    except httpx.ConnectError:
+        progress.empty()
+        st.error("Cannot connect to API server. Is it running?")
+    except httpx.ReadTimeout:
+        progress.empty()
+        st.error("Audio processing timed out. The file may be too large for CPU transcription.")
+    except httpx.HTTPError as e:
+        progress.empty()
+        st.error(f"Audio ingestion request failed: {e}")
 
 
 if __name__ == "__main__":

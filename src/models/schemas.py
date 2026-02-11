@@ -128,6 +128,12 @@ class IngestionResult(BaseModel):
     action_items_count: int = 0
 
 
+class AudioIngestionResult(IngestionResult):
+    """Result returned after ingesting an audio file (transcription + ingestion)."""
+
+    transcript_filename: str
+
+
 # --- LLM ---
 
 
