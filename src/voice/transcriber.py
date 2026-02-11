@@ -75,7 +75,7 @@ class AudioTranscriber:
                 logger.info("loading_pyannote_pipeline")
                 self._diarization_pipeline = Pipeline.from_pretrained(
                     "pyannote/speaker-diarization-3.1",
-                    use_auth_token=self._hf_token,
+                    token=self._hf_token,
                 )
             except ImportError:
                 raise ImportError(
