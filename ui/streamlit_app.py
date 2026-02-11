@@ -17,10 +17,28 @@ AUDIO_MIME_MAP = {
     "webm": "audio/webm",
 }
 
+# Confidence badge styling
+_CONFIDENCE_BADGE = {
+    "high": ("High", "#28a745"),
+    "medium": ("Medium", "#fd7e14"),
+    "low": ("Low", "#dc3545"),
+}
+
 
 def _is_audio_file(filename: str) -> bool:
     """Check if a filename has an audio extension."""
     return any(filename.lower().endswith(f".{ext}") for ext in AUDIO_EXTENSIONS)
+
+
+def _confidence_html(level: str, score: float) -> str:
+    """Build an HTML badge for the confidence level."""
+    label, color = _CONFIDENCE_BADGE.get(level, ("Unknown", "#6c757d"))
+    pct = f"{score * 100:.0f}%" if score > 0 else "N/A"
+    return (
+        f'<span style="background:{color};color:#fff;padding:2px 8px;'
+        f'border-radius:4px;font-size:0.85em;font-weight:600;">'
+        f'{label} ({pct})</span>'
+    )
 
 
 def main() -> None:
@@ -32,8 +50,52 @@ def main() -> None:
     )
     st.title("Meeting Intelligence System")
 
-    # --- Sidebar: Upload & Meeting Selection ---
+    # --- Sidebar ---
     with st.sidebar:
+        # --- Help / Guide ---
+        with st.expander("How to use this app", expanded=False):
+            st.markdown("""
+**Meeting Intelligence** analyses meeting transcripts and lets you ask
+questions about discussions, decisions, and action items.
+
+---
+
+**Uploading a meeting**
+
+- Click **Browse files** below to upload a file.
+- **Text transcripts** (`.txt`) — processed instantly.
+- **Audio recordings** (`.mp3`, `.wav`, `.m4a`) — transcribed with
+  speaker labels, then processed. Audio can take a few minutes on CPU.
+
+**Asking questions**
+
+Type a question in the chat box, for example:
+- *"What are the action items?"*
+- *"What did Sarah say about the deadline?"*
+- *"Summarise the meeting."*
+- *"What decisions were made across all meetings?"*
+
+**Understanding the answer**
+
+Each answer shows:
+- **Confidence** — how well the retrieved context matches your question.
+  - **High** — strong semantic match or direct database lookup.
+  - **Medium** — reasonable match; answer is likely accurate.
+  - **Low** — weak match; treat the answer with caution.
+- **Intent** — how your question was classified (semantic, speaker,
+  structured, cross-meeting).
+- **Sources** — the transcript excerpts used to generate the answer,
+  each with a relevance score (0-1).
+
+**Filtering by meeting**
+
+Use the **Meetings** dropdown to scope questions to a single meeting
+or search across all meetings.
+""")
+
+        st.divider()
+
+        # --- Upload ---
         st.header("Upload")
         uploaded_file = st.file_uploader(
             "Upload a transcript or audio file",
@@ -51,9 +113,10 @@ def main() -> None:
                     _ingest_transcript(uploaded_file)
 
         st.divider()
+
+        # --- Meeting selection ---
         st.header("Meetings")
 
-        # Fetch and display ingested meetings
         meetings: list[dict] = []
         try:
             resp = httpx.get(f"{API_BASE}/meetings", timeout=10.0)
@@ -66,7 +129,6 @@ def main() -> None:
         selected = st.selectbox("Filter by meeting", options=meeting_options)
         selected_meeting_id: str | None = None if selected == "All meetings" else selected
 
-        # Show meeting details if one is selected
         if selected_meeting_id and meetings:
             meeting = next((m for m in meetings if m["meeting_id"] == selected_meeting_id), None)
             if meeting:
@@ -83,20 +145,14 @@ def main() -> None:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
             if "metadata" in msg:
-                meta = msg["metadata"]
-                cols = st.columns(3)
-                cols[0].caption(f"Intent: {meta.get('intent', 'N/A')}")
-                cols[1].caption(f"Latency: {meta.get('latency_ms', 'N/A')}ms")
-                cols[2].caption(f"Sources: {meta.get('num_sources', 0)}")
+                _show_answer_metadata(msg["metadata"])
 
     # Chat input
     if question := st.chat_input("Ask about your meetings..."):
-        # Add user message
         st.session_state.messages.append({"role": "user", "content": question})
         with st.chat_message("user"):
             st.markdown(question)
 
-        # Get answer from API
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
@@ -114,16 +170,14 @@ def main() -> None:
                         answer = data["answer"]
                         st.markdown(answer)
 
-                        # Show metadata
                         metadata = {
+                            "confidence": data.get("confidence", "medium"),
+                            "confidence_score": data.get("confidence_score", 0.0),
                             "intent": data.get("intent", "N/A"),
                             "latency_ms": data.get("latency_ms", "N/A"),
                             "num_sources": len(data.get("sources", [])),
                         }
-                        cols = st.columns(3)
-                        cols[0].caption(f"Intent: {metadata['intent']}")
-                        cols[1].caption(f"Latency: {metadata['latency_ms']}ms")
-                        cols[2].caption(f"Sources: {metadata['num_sources']}")
+                        _show_answer_metadata(metadata)
 
                         # Show sources in expander
                         sources = data.get("sources", [])
@@ -166,6 +220,22 @@ def main() -> None:
                     st.error("Query timed out. The server may be loading models — try again in a moment.")
                 except httpx.HTTPError as e:
                     st.error(f"Request failed: {e}")
+
+
+def _show_answer_metadata(meta: dict) -> None:
+    """Render confidence badge and metadata row below an answer."""
+    confidence = meta.get("confidence", "medium")
+    confidence_score = meta.get("confidence_score", 0.0)
+
+    st.markdown(
+        _confidence_html(confidence, confidence_score),
+        unsafe_allow_html=True,
+    )
+
+    cols = st.columns(3)
+    cols[0].caption(f"Intent: {meta.get('intent', 'N/A')}")
+    cols[1].caption(f"Latency: {meta.get('latency_ms', 'N/A')}ms")
+    cols[2].caption(f"Sources: {meta.get('num_sources', 0)}")
 
 
 def _ingest_transcript(uploaded_file: st.runtime.uploaded_file_manager.UploadedFile) -> None:

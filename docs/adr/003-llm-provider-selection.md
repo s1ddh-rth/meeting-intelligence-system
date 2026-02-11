@@ -7,10 +7,10 @@ Accepted
 The system requires an LLM for two tasks: (1) extracting structured data from transcripts at ingestion time, and (2) generating grounded answers to user queries. The solution must work for a demo/interview context with minimal cost, while demonstrating production-ready architecture.
 
 ## Options Considered
-1. **OpenAI GPT-4o** — Industry standard, excellent quality, paid API
-2. **Google Gemini 2.5 Flash** — Free tier available, good quality, fast
-3. **Anthropic Claude Sonnet** — Strong reasoning, paid API
-4. **Ollama (local)** — Fully offline, variable quality depending on model
+1. **OpenAI GPT-4o** - Industry standard, excellent quality, paid API
+2. **Google Gemini 2.5 Flash** - Free tier available, good quality, fast
+3. **Anthropic Claude Sonnet** - Strong reasoning, paid API
+4. **Ollama (local)** - Fully offline, variable quality depending on model
 
 ## Decision
 Multi-provider architecture with Gemini 2.5 Flash as primary, Claude Sonnet and Ollama as drop-in replacements.

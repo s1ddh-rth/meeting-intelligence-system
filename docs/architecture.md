@@ -8,10 +8,10 @@ The Meeting Intelligence System is built around two core pipelines — **Ingesti
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         CLIENT LAYER                                │
 │                                                                     │
-│  ┌───────────────┐    ┌──────────────────────────────────────┐     │
-│  │  Streamlit UI  │───▶│         FastAPI (port 8000)          │     │
-│  │  (port 8501)   │    │  /api/ingest  /api/query  /api/...  │     │
-│  └───────────────┘    └──────────────┬───────────────────────┘     │
+│  ┌───────────────┐    ┌───────────────────────────────────────────────┐  │
+│  │  Streamlit UI  │───▶│              FastAPI (port 8000)              │  │
+│  │  (port 8501)   │    │  /api/ingest  /api/ingest/audio  /api/query  │  │
+│  └───────────────┘    └──────────────────────┬────────────────────────┘  │
 └──────────────────────────────────────┼──────────────────────────────┘
                                        │
 ┌──────────────────────────────────────┼──────────────────────────────┐
@@ -20,7 +20,8 @@ The Meeting Intelligence System is built around two core pipelines — **Ingesti
 │  ┌────────────────────┐   ┌──────────┴──────────┐                  │
 │  │  Ingestion Chain    │   │   Query Chain        │                  │
 │  │                     │   │                      │                  │
-│  │  parse → chunk →    │   │  classify intent →   │                  │
+│  │  [transcribe] →     │   │  classify intent →   │                  │
+│  │  parse → chunk →    │   │  [speaker check] →   │                  │
 │  │  embed → store →    │   │  retrieve context →  │                  │
 │  │  extract → store    │   │  generate answer     │                  │
 │  └────────┬───────────┘   └──────────┬───────────┘                  │
@@ -30,10 +31,11 @@ The Meeting Intelligence System is built around two core pipelines — **Ingesti
 │           │       COMPONENT LAYER    │                              │
 │           │                          │                              │
 │  ┌────────┴────────┐   ┌────────────┴────────┐   ┌──────────────┐ │
-│  │ TranscriptParser │   │    Retriever         │   │ LLM Provider │ │
-│  │ SpeakerChunker   │   │  (vector + struct)   │   │ (Gemini /    │ │
-│  │ Embedder         │   │                      │   │  Claude /    │ │
-│  │ Extractor        │   │                      │   │  Ollama)     │ │
+│  │AudioTranscriber  │   │    Retriever         │   │ LLM Provider │ │
+│  │ TranscriptParser │   │  (vector + struct)   │   │ (Gemini /    │ │
+│  │ SpeakerChunker   │   │                      │   │  Claude /    │ │
+│  │ Embedder         │   │                      │   │  Ollama)     │ │
+│  │ Extractor        │   │                      │   │              │ │
 │  └─────────────────┘   └──────────────────────┘   └──────────────┘ │
 └─────────────────────────────────────────────────────────────────────┘
             │                          │
@@ -57,9 +59,17 @@ The Meeting Intelligence System is built around two core pipelines — **Ingesti
 ### Ingestion Pipeline
 
 ```
-Transcript File (.txt)
-    │
-    ▼
+Audio File (.mp3/.wav/.m4a)          Transcript File (.txt)
+    │                                     │
+    ▼                                     │
+┌──────────────────┐                      │
+│ AudioTranscriber  │  faster-whisper +    │
+│                   │  pyannote diarize    │
+│                   │  → save .txt file    │
+└────────┬─────────┘                      │
+         │ .txt transcript                │
+         └──────────┬─────────────────────┘
+                    ▼
 ┌──────────────────┐
 │ TranscriptParser  │  Auto-detect format (timestamped or simple labels)
 │                   │  Parse into Utterance objects
@@ -86,13 +96,13 @@ Transcript File (.txt)
 │ Chunks + vectors  │     │ Action items      │
 │ + metadata        │     │ Decisions         │
 └──────────────────┘     │ Topics, Summary   │
-         ▲                └──────────────────┘
-         │                         ▲
-         │                         │
-┌────────┴─────────┐    ┌─────────┴────────┐
-│ Embedder          │    │ StructuredExtract │  LLM extracts structured
-│ (batch encode)    │    │ (LLM-powered)     │  data from full transcript
-└──────────────────┘    └──────────────────┘
+                          └──────────────────┘
+                                   ▲
+                                   │
+                          ┌────────┴─────────┐
+                          │ StructuredExtract  │  LLM extracts structured
+                          │ (LLM-powered)      │  data from full transcript
+                          └──────────────────┘
 ```
 
 ### Query Pipeline
@@ -103,8 +113,16 @@ User Question
     ▼
 ┌──────────────────┐
 │ Intent Classifier │  LLM classifies: STRUCTURED | SPEAKER | SEMANTIC | CROSS_MEETING
+│                   │  Falls back to heuristic keywords if LLM is rate-limited
 └────────┬─────────┘
          │ QueryIntent
+         ▼
+┌──────────────────┐     ┌─────────────────────────────────┐
+│ Speaker Check     │────▶│ Speaker not found?               │
+│ (SPEAKER intent)  │     │ → Return definitive answer with  │
+│                   │     │   actual speaker list (no LLM)   │
+└────────┬─────────┘     └─────────────────────────────────┘
+         │ speaker exists (or non-speaker intent)
          ▼
 ┌──────────────────┐
 │ Retriever         │  Routes based on intent:
@@ -116,19 +134,25 @@ User Question
          │ RetrievalResult (chunks + structured context)
          ▼
 ┌──────────────────┐
+│ Confidence Scorer │  Compute confidence from retrieval quality:
+│                   │  HIGH (>= 0.7) | MEDIUM (>= 0.4) | LOW (< 0.4)
+└────────┬─────────┘
+         │ (empty results → honest "no info" answer, skip LLM)
+         ▼
+┌──────────────────┐
 │ Prompt Builder    │  Inject retrieved context into system prompt
 └────────┬─────────┘
          │ formatted prompt
          ▼
 ┌──────────────────┐
 │ LLM Provider      │  Generate grounded answer with citations
-│ (Gemini/Claude/   │
+│ (Gemini/Claude/   │  (rate-limit fallback: return raw excerpts)
 │  Ollama)          │
 └────────┬─────────┘
          │ LLMResponse
          ▼
 ┌──────────────────┐
-│ QueryResponse     │  Answer + sources + intent + latency metrics
+│ QueryResponse     │  Answer + sources + intent + confidence + latency
 └──────────────────┘
 ```
 
@@ -157,3 +181,5 @@ User Question
 4. **Provider abstraction**: LLM provider is swappable via configuration
 5. **Speaker awareness**: Chunking, metadata, and filtering preserve conversation structure
 6. **Idempotent ingestion**: Re-ingesting a transcript replaces existing data cleanly
+7. **Graceful degradation**: Speaker existence checks, confidence scoring, and heuristic classification work even when the LLM is rate-limited
+8. **Lazy model loading**: Audio transcription models (whisper + pyannote) load only on first use — text-only users pay no cost

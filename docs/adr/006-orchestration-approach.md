@@ -7,16 +7,16 @@ Accepted
 The system needs to orchestrate multi-step pipelines: ingestion (parse → chunk → embed → store → extract) and query (classify → retrieve → prompt → generate). Orchestration frameworks like LangChain abstract this, but at the cost of complexity and debugging difficulty.
 
 ## Options Considered
-1. **LangChain** — Popular framework, rich ecosystem, heavy abstraction layer
-2. **LlamaIndex** — Data-focused framework, good for document pipelines
-3. **Pydantic AI** — Lightweight agent framework from the Pydantic team
-4. **Custom Python chain pattern** — Plain Python classes with explicit step orchestration
+1. **LangChain** - Popular framework, rich ecosystem, heavy abstraction layer
+2. **LlamaIndex** - Data-focused framework, good for document pipelines
+3. **Pydantic AI** - Lightweight agent framework from the Pydantic team
+4. **Custom Python chain pattern** - Plain Python classes with explicit step orchestration
 
 ## Decision
 Custom Python chain pattern with no external orchestration framework.
 
 ## Rationale
-- Full control over execution flow — every step is visible and debuggable
+- Full control over execution flow - every step is visible and debuggable
 - No framework lock-in or version compatibility issues
 - Same retrieve-augment-generate pattern as frameworks, without the abstraction tax
 - Each pipeline step is a separate, testable component with clear interfaces

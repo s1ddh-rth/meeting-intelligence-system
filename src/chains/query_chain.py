@@ -7,7 +7,7 @@ import time
 import structlog
 
 from src.llm.provider import LLMProvider, RateLimitError
-from src.models.schemas import QueryIntent, QueryResponse
+from src.models.schemas import ConfidenceLevel, QueryIntent, QueryResponse, RetrievalResult
 from src.prompts.classification_prompts import (
     CLASSIFICATION_SYSTEM_PROMPT,
     CLASSIFICATION_USER_PROMPT,
@@ -71,6 +71,31 @@ class QueryChain:
                     speaker = self._match_known_speaker(query, meeting_id)
 
                 if speaker:
+                    # Fast-path: check if this speaker exists before any vector search.
+                    # This handles rate-limited LLM scenarios correctly and avoids
+                    # the unfiltered-retry fallback returning irrelevant chunks.
+                    known_speakers = self._retriever.get_known_speakers(meeting_id)
+                    if not self._speaker_exists(speaker, known_speakers):
+                        latency = (time.time() - start_time) * 1000
+                        answer = self._build_speaker_not_found_answer(
+                            speaker, known_speakers, meeting_id
+                        )
+                        logger.info(
+                            "speaker_not_in_known_list",
+                            speaker=speaker,
+                            known_speakers=sorted(known_speakers),
+                            meeting_id=meeting_id,
+                        )
+                        return QueryResponse(
+                            answer=answer,
+                            sources=[],
+                            intent=intent,
+                            confidence=ConfidenceLevel.HIGH,
+                            confidence_score=1.0,
+                            tokens_used=0,
+                            latency_ms=round(latency, 1),
+                        )
+
                     context = self._retriever.search(
                         query, meeting_id, speaker_filter=speaker
                     )
@@ -96,7 +121,10 @@ class QueryChain:
                 # SEMANTIC — default vector search
                 context = self._retriever.search(query, meeting_id)
 
-        # Step 3: Guard against empty retrieval — do NOT send empty context to LLM
+        # Step 3: Compute confidence from retrieval quality
+        confidence, confidence_score = self._compute_confidence(context, intent)
+
+        # Step 3b: Guard against empty retrieval — do NOT send empty context to LLM
         has_chunks = len(context.chunks) > 0
         has_structured = (
             context.structured_context is not None
@@ -117,6 +145,8 @@ class QueryChain:
                 answer=answer,
                 sources=[],
                 intent=intent,
+                confidence=ConfidenceLevel.LOW,
+                confidence_score=0.0,
                 tokens_used=0,
                 latency_ms=round(latency, 1),
             )
@@ -146,6 +176,8 @@ class QueryChain:
                 answer=fallback_answer,
                 sources=context.to_sources(),
                 intent=intent,
+                confidence=confidence,
+                confidence_score=confidence_score,
                 tokens_used=0,
                 latency_ms=round(latency, 1),
             )
@@ -165,8 +197,47 @@ class QueryChain:
             answer=response.content,
             sources=context.to_sources(),
             intent=intent,
+            confidence=confidence,
+            confidence_score=confidence_score,
             tokens_used=response.tokens_used,
             latency_ms=round(latency, 1),
+        )
+
+    @staticmethod
+    def _speaker_exists(speaker: str, known_speakers: set[str]) -> bool:
+        """Check if an extracted speaker name matches any known speaker.
+
+        Uses case-insensitive matching against individual name tokens so that
+        "Sarah" matches "Sarah Johnson" and "tom" matches "Tom".
+        """
+        speaker_lower = speaker.lower()
+        for known in known_speakers:
+            known_lower = known.lower()
+            # Exact match (case-insensitive)
+            if speaker_lower == known_lower:
+                return True
+            # Token match — "Sarah" matches "Sarah Johnson"
+            if speaker_lower in known_lower.split():
+                return True
+        return False
+
+    @staticmethod
+    def _build_speaker_not_found_answer(
+        speaker: str, known_speakers: set[str], meeting_id: str | None
+    ) -> str:
+        """Build a definitive 'speaker not found' answer with the actual speaker list."""
+        meeting_ctx = f" in meeting **{meeting_id}**" if meeting_id else " in any ingested meetings"
+
+        if known_speakers:
+            speaker_list = ", ".join(sorted(known_speakers))
+            return (
+                f"**{speaker}** does not appear as a speaker{meeting_ctx}. "
+                f"The speakers in this meeting are: {speaker_list}."
+            )
+
+        return (
+            f"**{speaker}** does not appear as a speaker{meeting_ctx}. "
+            f"No speaker information is available."
         )
 
     @staticmethod
@@ -192,6 +263,46 @@ class QueryChain:
             f"I don't have any relevant information from the meeting transcripts to answer this question. "
             f"No matching content was found{meeting_ctx}."
         )
+
+    @staticmethod
+    def _compute_confidence(
+        context: RetrievalResult, intent: QueryIntent
+    ) -> tuple[ConfidenceLevel, float]:
+        """Compute answer confidence from retrieval quality and query type.
+
+        Returns:
+            Tuple of (confidence level, numeric score 0.0-1.0).
+        """
+        has_structured = (
+            context.structured_context is not None
+            and context.structured_context != "No structured data available."
+        )
+
+        # Structured queries answered from SQLite are inherently reliable
+        if intent == QueryIntent.STRUCTURED and has_structured:
+            return ConfidenceLevel.HIGH, 1.0
+
+        # For vector-search-based answers, use the top retrieval score
+        if context.chunks:
+            top_score = context.chunks[0].score
+
+            # If retriever already flagged low confidence, cap at medium
+            if context.low_confidence:
+                if top_score >= 0.4:
+                    return ConfidenceLevel.MEDIUM, round(top_score, 3)
+                return ConfidenceLevel.LOW, round(top_score, 3)
+
+            if top_score >= 0.7:
+                return ConfidenceLevel.HIGH, round(top_score, 3)
+            if top_score >= 0.4:
+                return ConfidenceLevel.MEDIUM, round(top_score, 3)
+            return ConfidenceLevel.LOW, round(top_score, 3)
+
+        # Structured context exists but no chunks (mixed retrieval)
+        if has_structured:
+            return ConfidenceLevel.HIGH, 1.0
+
+        return ConfidenceLevel.LOW, 0.0
 
     @staticmethod
     def _build_rate_limit_fallback(context: "RetrievalResult") -> str:

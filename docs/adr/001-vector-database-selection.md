@@ -7,9 +7,9 @@ Accepted
 The system requires a vector database to store and search meeting transcript embeddings. It needs to support metadata filtering (by speaker, meeting ID) for targeted retrieval, handle production-scale workloads, and run alongside the application in Docker.
 
 ## Options Considered
-1. **ChromaDB** — Embedded Python vector store, easy setup, popular for prototyping
-2. **pgvector** — PostgreSQL extension, combines relational + vector in one database
-3. **Qdrant** — Standalone Rust-based vector database, Docker-native, rich filtering API
+1. **ChromaDB** - Embedded Python vector store, easy setup, popular for prototyping
+2. **pgvector** - PostgreSQL extension, combines relational + vector in one database
+3. **Qdrant** - Standalone Rust-based vector database, Docker-native, rich filtering API
 
 ## Decision
 Qdrant

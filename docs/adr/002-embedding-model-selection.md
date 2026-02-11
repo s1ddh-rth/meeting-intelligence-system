@@ -7,9 +7,9 @@ Accepted
 The system needs an embedding model to convert meeting transcript chunks into vectors for similarity search. The model must balance quality, speed, cost, and deployment simplicity. Embeddings are the foundation of retrieval quality.
 
 ## Options Considered
-1. **OpenAI text-embedding-3-small** — High quality, cloud-hosted, costs money per token
-2. **all-mpnet-base-v2** — Larger sentence-transformer (768-dim), best quality in SBERT family
-3. **all-MiniLM-L6-v2** — Smaller sentence-transformer (384-dim), fast, popular for production
+1. **OpenAI text-embedding-3-small** - High quality, cloud-hosted, costs money per token
+2. **all-mpnet-base-v2** - Larger sentence-transformer (768-dim), best quality in SBERT family
+3. **all-MiniLM-L6-v2** - Smaller sentence-transformer (384-dim), fast, popular for production
 
 ## Decision
 all-MiniLM-L6-v2

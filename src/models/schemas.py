@@ -64,12 +64,22 @@ class ChunkSource(BaseModel):
     relevance_score: float
 
 
+class ConfidenceLevel(str, Enum):
+    """Answer confidence based on retrieval quality."""
+
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
 class QueryResponse(BaseModel):
     """Response to a user query with answer, sources, and metrics."""
 
     answer: str
     sources: list[ChunkSource]
     intent: QueryIntent
+    confidence: ConfidenceLevel = ConfidenceLevel.MEDIUM
+    confidence_score: float = 0.0
     tokens_used: int | None = None
     latency_ms: float
 
