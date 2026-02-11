@@ -1,0 +1,36 @@
+[00:00:10] James: Alright everyone, welcome to sprint planning. We've got a packed backlog so let's prioritise carefully. I'll share my screen with the board.
+[00:00:30] James: The top priority from product is the patient portal launch. We're targeting February 14th for the beta release. That gives us three sprints including this one.
+[00:00:55] Sarah: That's tight. Where are we on the backend? Tom, how did the migration scripts turn out?
+[00:01:10] Tom: The forward migration is solid. I fixed the rollback issue from last week — it was a cascade delete ordering problem. Both are tested on staging now that DevOps brought it back up.
+[00:01:30] James: Good. So what's left for the patient records API?
+[00:01:40] Tom: The CRUD endpoints are about 60% done. I've got create and read working. Update and delete still need the authorization checks — we can't let any user modify any record.
+[00:02:00] Sarah: That ties into the role-based access control work I've been scoping. I think we should estimate that as a separate ticket. It's at least a 5-pointer on its own.
+[00:02:20] James: Agreed. Let's split it. Tom, how many points for finishing the CRUD endpoints without RBAC?
+[00:02:35] Tom: I'd say 3 points. Two days of work plus testing.
+[00:02:45] James: And Sarah, the RBAC implementation?
+[00:02:50] Sarah: 5 points. It touches the middleware layer, needs new database tables for permissions, and we need comprehensive tests. I don't want to cut corners on security.
+[00:03:10] James: Fair enough. Maya, where are we on the frontend?
+[00:03:18] Maya: The dashboard is done. The notification component is working with mock data. Once Tom's WebSocket endpoint is ready, I can integrate in about a day.
+[00:03:35] Maya: The big remaining piece is the patient record forms. That's a 5-pointer — it's three forms with validation, error handling, and we need to handle the file upload for medical documents.
+[00:03:58] James: Can we simplify the file upload? Maybe do a basic version first and enhance later?
+[00:04:10] Maya: We could skip the drag-and-drop and preview features and just do a standard file input. That saves about a day. Call it 3 points for the basic version.
+[00:04:25] James: Let's do that. We can add the fancy upload in the next sprint. Sarah, any concerns?
+[00:04:35] Sarah: No, that's pragmatic. But we need to make sure the file size validation is still there — we can't let people upload 500MB files. That's a security risk.
+[00:04:50] James: Absolutely. OK so let me tally up. We have: patient records CRUD (3), RBAC (5), notification integration (2), patient record forms basic (3), file size validation (1). That's 14 points.
+[00:05:15] James: Our velocity last sprint was 16, so we have room for one more item. What about the API rate limiting Sarah mentioned?
+[00:05:30] Sarah: That's a 3-pointer. I've already started the implementation. I just need the threshold numbers from you, James.
+[00:05:42] James: Right, I keep forgetting. Let's set it at 100 requests per minute for authenticated users, 20 for unauthenticated. Does that work?
+[00:05:55] Sarah: That's reasonable. I'll implement that today.
+[00:06:05] James: Perfect. So 17 points total. Slightly above velocity but I think it's achievable since Sarah's already started the rate limiting.
+[00:06:20] Tom: One thing — I think we should add the API documentation task. We promised the mobile team they'd have OpenAPI docs by end of January.
+[00:06:38] James: Good call. How many points?
+[00:06:42] Tom: 2 points. FastAPI generates most of it automatically, I just need to add descriptions and examples.
+[00:06:55] James: That puts us at 19. That's pushing it. Anyone want to defer something?
+[00:07:08] Maya: I think the notification integration can wait. The mock data version works fine for the beta. Real-time notifications are nice-to-have.
+[00:07:22] Sarah: I agree with Maya. Let's defer notifications to next sprint and keep API docs since the mobile team is blocked on it.
+[00:07:35] James: Alright, decision made. Final sprint: patient records CRUD (3), RBAC (5), patient record forms basic (3), file validation (1), rate limiting (3), API docs (2). That's 17 points.
+[00:07:55] James: Tom owns CRUD and API docs. Sarah owns RBAC and rate limiting. Maya owns the forms and validation. Everyone clear?
+[00:08:10] Tom: Clear.
+[00:08:12] Maya: Clear.
+[00:08:14] Sarah: Clear. Let's ship this.
+[00:08:20] James: Sprint starts now. Let's regroup at standup tomorrow. Good planning everyone.

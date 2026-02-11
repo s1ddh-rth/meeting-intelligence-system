@@ -1,0 +1,18 @@
+[00:00:05] Sarah: Good morning everyone. Let's do a quick standup. I'll go first.
+[00:00:12] Sarah: Yesterday I finished the authentication module review and merged Tom's PR for the user session handling. Today I'm going to focus on the API rate limiting implementation we discussed last week.
+[00:00:35] Sarah: No blockers from my side, but I want to flag that we need to finalise the rate limit thresholds before I can write the tests. James was supposed to confirm the numbers from product.
+[00:01:02] Tom: Morning. So yesterday I worked on the database migration scripts for the new patient records schema. Got the forward migration done but the rollback script is still flaky — it fails on the foreign key constraints.
+[00:01:25] Tom: Today I'll fix that rollback issue and then start on the REST endpoint for patient record retrieval. I think I'll need Sarah's input on the response format since it ties into the API design doc.
+[00:01:48] Tom: My blocker is the staging database. It's been down since yesterday afternoon and I can't test my migrations. I've pinged DevOps but no response yet.
+[00:02:10] Sarah: I'll chase DevOps on that after standup. We can't have staging down for this long.
+[00:02:22] Maya: Hi everyone. Yesterday I completed the new dashboard layout based on the Figma designs. The responsive breakpoints are working on tablet and mobile now.
+[00:02:45] Maya: Today I'm going to integrate the real-time notification component. I need the WebSocket endpoint from Tom — is that ready?
+[00:03:00] Tom: Not yet. I'd say end of day tomorrow at the earliest. The patient records endpoint is higher priority right now.
+[00:03:15] Maya: OK, I'll work on the notification UI with mock data for now and swap in the real endpoint when it's ready.
+[00:03:28] Sarah: Good plan. Maya, can you also do a quick accessibility audit on the dashboard before Friday? The compliance team asked for it.
+[00:03:45] Maya: Sure, I'll add that to my list. I'll aim to have it done by Thursday.
+[00:03:55] Sarah: Perfect. So to recap — Tom, fix the rollback script and start on patient records. Maya, notifications UI and accessibility audit. I'll handle rate limiting and chase DevOps on staging.
+[00:04:15] Sarah: One more thing — sprint planning is Monday. Everyone please update your Jira tickets by end of Friday so James has accurate velocity numbers.
+[00:04:30] Tom: Will do.
+[00:04:32] Maya: Got it.
+[00:04:35] Sarah: Great, let's get to it. Have a good day everyone.

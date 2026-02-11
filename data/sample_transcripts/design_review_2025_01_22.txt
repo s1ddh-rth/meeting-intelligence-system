@@ -1,0 +1,32 @@
+Sarah: Alright, let's review the API design for the patient records endpoint. Tom, you drafted the spec — walk us through it.
+Tom: Sure. So the base path is /api/v1/patients/{patient_id}/records. I've designed it as a standard RESTful resource with GET, POST, PUT, and DELETE.
+Tom: For the response format, each record has an ID, patient ID, record type, content body, created timestamp, and an array of attached document URLs.
+Alex: Quick question on versioning. Why /v1/ in the path instead of header-based versioning?
+Tom: I went with URL-based versioning because it's more explicit and easier to test. You can curl it directly without setting custom headers. The mobile team also prefers it.
+Alex: Fair enough. My concern with URL versioning is that it makes it harder to evolve the API. If we change the response shape, we'd need a whole new URL path. With header versioning, you can negotiate.
+Sarah: I think URL versioning is fine for our scale. We're not building a public API with hundreds of consumers. If we ever need to migrate, we can proxy /v1/ to /v2/ at the gateway level.
+Alex: OK, I'll accept that trade-off. Let's document it in the ADR though.
+Sarah: Agreed. Tom, what about pagination?
+Tom: I'm using cursor-based pagination. The response includes a next_cursor field. I think offset-based is simpler but cursor-based performs better on large datasets and it doesn't break when records are added during pagination.
+Alex: Strong agree on cursor-based. We had issues with offset pagination at my last company when we hit millions of rows. The only thing I'd add is a page_size parameter with a sensible default and max limit.
+Tom: Good call. I'll set default to 20, max to 100. That prevents the client from accidentally requesting the entire table.
+Sarah: Makes sense. Now let's talk about the authorization model. I'm implementing RBAC and I need to understand the access patterns.
+Tom: Three roles: admin sees everything, provider sees their own patients' records, patient sees only their own. The tricky part is the provider-patient relationship — we need a junction table.
+Sarah: Right. I was thinking we add a provider_patients table with provider_id and patient_id. Then in the middleware, before any record access, we check if the requesting user has the right relationship.
+Alex: What about emergency access? In healthcare, there are scenarios where a provider needs to access records outside their patient list.
+Sarah: Good edge case. I'd suggest a break-glass mechanism — the provider can request emergency access, it gets logged with a reason, and it's reviewed later. We don't build that now, but we should design the RBAC to allow it later.
+Alex: That's smart. So the permission check should be pluggable rather than hard-coded.
+Sarah: Exactly. I'll implement it as a middleware function that takes a permission checker interface. The default implementation does the standard role check, but we can swap in an emergency-access-aware checker later.
+Tom: For the document upload endpoint, I'm thinking POST /api/v1/patients/{patient_id}/records/{record_id}/documents. Accepts multipart form data with file size limit of 10MB.
+Alex: 10MB seems reasonable. What file types are we allowing?
+Tom: PDF, JPEG, PNG, and DICOM for medical imaging. I'll validate the file type server-side by checking the magic bytes, not just the extension.
+Sarah: Good. Don't trust the Content-Type header either, we've seen clients send the wrong MIME type before.
+Alex: What about virus scanning? In healthcare, you absolutely need to scan uploaded files.
+Tom: I hadn't considered that. We could integrate ClamAV as a Docker sidecar service. It adds complexity but it's the right thing to do for a healthcare application.
+Sarah: Let's add it as a follow-up ticket. It's important but not blocking for the beta. We can restrict beta users to internal staff who we trust with clean files.
+Alex: Agreed. Just make sure the upload handler is designed to slot in a scanning step without refactoring. Maybe an upload processing pipeline pattern.
+Tom: I like that. I'll design the upload handler as a chain of steps: validate type, validate size, scan (no-op for now), store. Each step is a function that can fail and return an error.
+Sarah: Perfect. I think we have a solid design. Let me summarise the decisions. URL-based versioning for simplicity. Cursor-based pagination with default 20 and max 100. RBAC with pluggable permission checker. Document upload pipeline with future virus scanning slot. File validation via magic bytes.
+Alex: One last thing — let's make sure all endpoints return consistent error responses. A standard error envelope with code, message, and optional details field.
+Tom: I'll create a shared error model and exception handler in FastAPI. That's easy to centralise.
+Sarah: Great. I'll create the ADR for these decisions and we can reference it during code review. Thanks everyone, good session.
