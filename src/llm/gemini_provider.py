@@ -94,7 +94,7 @@ class GeminiProvider(LLMProvider):
         error_str = str(last_error)
         if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
             raise RateLimitError(
-                f"Gemini API rate limit exceeded (free tier: 20 requests/day). "
-                f"Please wait a minute and try again.",
+                "Gemini API rate limit exceeded (free tier: 20 requests/day). "
+                "Please wait a minute and try again.",
             )
         raise RuntimeError(f"Gemini API call failed after {_MAX_RETRIES} retries: {last_error}")

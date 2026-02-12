@@ -112,7 +112,6 @@ class AudioTranscriber:
         # Step 2: Speaker diarization with pyannote
         # Load audio via torchaudio and resample to 16kHz — pyannote expects
         # this sample rate and fails on raw MP3s with non-standard rates.
-        import torch
         import torchaudio
 
         waveform, sample_rate = torchaudio.load(audio_path)

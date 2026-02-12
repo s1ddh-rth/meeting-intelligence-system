@@ -90,9 +90,9 @@ class TranscriptParser:
 
         Scans the first 10 non-empty lines for timestamp patterns.
         """
-        non_empty = [l.strip() for l in lines if l.strip()][:10]
+        non_empty = [line.strip() for line in lines if line.strip()][:10]
         timestamped_count = sum(
-            1 for l in non_empty if _TIMESTAMPED_PATTERN.match(l)
+            1 for line in non_empty if _TIMESTAMPED_PATTERN.match(line)
         )
         return timestamped_count >= len(non_empty) * 0.5
 

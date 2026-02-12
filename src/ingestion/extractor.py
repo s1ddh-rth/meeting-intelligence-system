@@ -94,7 +94,7 @@ class StructuredExtractor:
         if cleaned.startswith("```"):
             lines = cleaned.split("\n")
             # Remove first and last lines (code fences)
-            lines = [l for l in lines if not l.strip().startswith("```")]
+            lines = [line for line in lines if not line.strip().startswith("```")]
             cleaned = "\n".join(lines)
 
         data = json.loads(cleaned)

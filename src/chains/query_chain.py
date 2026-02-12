@@ -307,8 +307,6 @@ class QueryChain:
     @staticmethod
     def _build_rate_limit_fallback(context: "RetrievalResult") -> str:
         """Build a fallback answer from raw context when LLM is rate-limited."""
-        from src.models.schemas import RetrievalResult  # noqa: F811
-
         parts = ["**Note:** The AI model is temporarily rate-limited. "
                  "Here are the relevant transcript excerpts I found:\n"]
 

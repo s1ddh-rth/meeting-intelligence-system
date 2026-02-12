@@ -161,7 +161,7 @@ class Retriever:
         if any(kw in query_lower for kw in ("who", "attend", "speaker", "participant", "present", "member")):
             speakers = self._structured_store.get_speakers(meeting_id)
             if speakers:
-                parts.append(f"MEETING SPEAKERS/ATTENDEES:\n  - " + "\n  - ".join(speakers))
+                parts.append("MEETING SPEAKERS/ATTENDEES:\n  - " + "\n  - ".join(speakers))
 
         # Get action items if relevant
         if any(kw in query_lower for kw in ("action", "todo", "task", "assign", "deadline")):
