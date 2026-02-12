@@ -7,7 +7,10 @@ AI-powered meeting transcript analysis with RAG — ask questions about discussi
 ### Prerequisites
 - Docker and Docker Compose (or Podman + podman-compose)
 - A Gemini API key ([get one free](https://aistudio.google.com/apikey))
-- *(Optional, for audio ingestion)* A HuggingFace token ([get one free](https://huggingface.co/settings/tokens)) with access to [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) and [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
+- *(Optional, for audio ingestion)* A HuggingFace token ([get one free](https://huggingface.co/settings/tokens)) — accept the model terms for all three gated models:
+  - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
+  - [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
+  - [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
 
 ### 1. Clone and configure
 ```bash
