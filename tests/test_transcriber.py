@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
@@ -49,6 +50,21 @@ class FakeDiarization:
 
 
 # --- Fixtures ---
+
+
+@pytest.fixture(autouse=True)
+def _mock_torchaudio() -> None:
+    """Mock torchaudio module — only available inside Docker (CPU wheel)."""
+    mock_waveform = MagicMock()
+    mock_waveform.shape = (1, 16000)  # mono, 1 second at 16kHz
+    mock_waveform.mean.return_value = mock_waveform
+
+    mock_module = MagicMock()
+    mock_module.load.return_value = (mock_waveform, 16000)
+    mock_module.functional.resample.return_value = mock_waveform
+
+    with patch.dict(sys.modules, {"torchaudio": mock_module}):
+        yield
 
 
 @pytest.fixture

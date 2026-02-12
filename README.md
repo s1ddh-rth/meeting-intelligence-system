@@ -79,7 +79,7 @@ All architectural decisions are documented as ADRs in [docs/adr/](docs/adr/):
 
 **Testing approach:** pytest covering core logic - parser format detection, chunker boundary logic, retriever filtering. 
 
-**What was consciously skipped and why:** Authentication (didn't feel relevant for a demo, would add OAuth2/API keys in production), comprehensive error handling (basic try/except with logging, production would add circuit breakers and retry policies), full-fledged CI/CD pipeline (GitHub Actions runs lint + tests on every push; deployment is manual since self-hosted runners are unsafe on public repos), input validation beyond Pydantic (would add file size limits, content type checking, rate limiting).
+**What was consciously skipped and why:** Authentication (didn't feel relevant for a demo, would add OAuth2/API keys in production), comprehensive error handling (basic try/except with logging, production would add circuit breakers and retry policies), CI/CD pipeline (would add GitHub Actions for lint + test + deploy, as described in the productionising section), input validation beyond Pydantic (would add file size limits, content type checking, rate limiting).
 
 ## How I Used AI Tools in Development
 **Our workflow:** Used Claude, and ChatGPT for architecture discussion, and technology comparison. Used Claude Code CLI for implementation with a CLAUDE.md context file that defined the project structure, coding standards, and architectural constraints.
